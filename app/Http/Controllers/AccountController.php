@@ -6,8 +6,11 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use App\Http\Controllers\Controller;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Hash;
+use Intervention\Image\ImageManager;
 use Illuminate\Support\Facades\Validator;
+use Intervention\Image\Drivers\Gd\Driver;
 
 class AccountController extends Controller
 {
@@ -67,7 +70,6 @@ class AccountController extends Controller
                 return redirect()->route('account.login')
                     ->with('error', 'Either email or password is incorrect');
             }
-
         } else {
             return redirect()->route('account.login')
                 ->withErrors($validator)
@@ -78,20 +80,21 @@ class AccountController extends Controller
     //This method will return the view of the profile page
     public function profile()
     {
-        $id= Auth::user()->id;
-        $user = User::where('id',$id)->first();
-        return view('Front.account.profile',[
+        $id = Auth::user()->id;
+        $user = User::where('id', $id)->first();
+        return view('Front.account.profile', [
             'user' => $user
         ]);
     }
 
-    public function updateProfile(Request $request){
-        $id= Auth::user()->id;
-        $validator= Validator::make($request->all(),[
+    public function updateProfile(Request $request)
+    {
+        $id = Auth::user()->id;
+        $validator = Validator::make($request->all(), [
             'name' => 'required|min:5|max:20',
-            'email' => 'required|email|unique:users,email,'.$id.',id',
+            'email' => 'required|email|unique:users,email,' . $id . ',id',
         ]);
-        if($validator->passes()){
+        if ($validator->passes()) {
             $user = User::find($id);
             $user->name = $request->name;
             $user->email = $request->email;
@@ -99,21 +102,64 @@ class AccountController extends Controller
             $user->phone = $request->mobile;
             $user->save();
 
-            session()->flash('success','Profile Updated Successfully.');
+            session()->flash('success', 'Profile Updated Successfully.');
 
             return response()->json([
-                'status'=>true,
-                'errors'=>[]
+                'status' => true,
+                'errors' => []
 
             ]);
-        }else{
+        } else {
             return response()->json([
-                'status'=>false,
-                'errors'=>$validator->errors()
+                'status' => false,
+                'errors' => $validator->errors()
 
             ]);
         }
+    }
 
+    public function updateProfilepic(Request $request)
+    {
+
+        $validator = Validator::make($request->all(), [
+            'image' => 'required|image'
+        ]);
+        $id = Auth::user()->id;
+        if ($validator->passes()) {
+
+            $image = $request->image;
+            $ext = $image->getClientOriginalExtension();
+            $imageName = $id . '-' . time() . '.' . $ext;
+            $image->move(public_path('storage/profile_pic/'), $imageName);
+
+            User::where('id', $id)->update(['image' => $imageName]);
+
+
+            //Create a small thumbnail
+            $sourcePath=public_path('storage/profile_pic/'.$imageName);
+            $manager = new ImageManager(Driver::class);
+            $image = $manager->read($sourcePath);
+
+            // resize to 150x150 pixel
+            $image->cover(150, 150);
+            $image->toPng()->save(public_path('storage/profile_pic/thumb/'.$imageName));
+
+            //Delete old file
+            File::Delete(public_path('storage/profile_pic/thumb/'.Auth::user()->image));
+            File::Delete(public_path('storage/profile_pic/'.Auth::user()->image));
+
+            session()->flash('success', 'Profile Picture updated successfully.');
+
+            return response()->json([
+                'status' => true,
+                'errors' => []
+            ]);
+        } else {
+            return response()->json([
+                'status' => false,
+                'errors' => $validator->errors()
+            ]);
+        }
     }
 
     public function logout()
